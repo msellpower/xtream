@@ -4,15 +4,19 @@ import subprocess, os, random, string, sys, shutil, socket, zipfile
 from itertools import cycle, izip
 from zipfile import ZipFile
 
-# URLs - Defaulting to emre1393 mirror for binaries. 
-rDownloadURL = {"main": "https://github.com/msellpower/xtream/releases/latest/download/main.tar.gz", "sub": "https://github.com/msellpower/xtream/releases/latest/download/LB.tar.gz"}
+# FIXED: Updated URL to a working mirror for the main binaries
+rDownloadURL = {
+    "main": "https://gitlab.com/m2i/xtream-ui-mod/-/raw/master/main.tar.gz",
+    "sub": "https://gitlab.com/m2i/xtream-ui-mod/-/raw/master/LB.tar.gz"
+}
 
-# FIXED: 
-# 1. libcurl3 -> libcurl4
-# 2. libjemalloc1 -> libjemalloc2
-# 3. removed python-paramiko (fails on 20.04)
-# 4. mcrypt -> libmcrypt-dev
-rPackages = ["libcurl4", "libxslt1-dev", "libgeoip-dev", "e2fsprogs", "wget", "libmcrypt-dev", "nscd", "htop", "zip", "unzip", "mc", "libjemalloc2", "mysql-server"]
+# FIXED: Optimized packages for Ubuntu 20.04
+rPackages = [
+    "libcurl4", "libxslt1-dev", "libgeoip-dev", "e2fsprogs", "wget", 
+    "libmcrypt-dev", "libpng-dev", "nscd", "htop", "zip", "unzip", "mc", 
+    "libjemalloc2", "mysql-server"
+]
+
 rInstall = {"MAIN": "main", "LB": "sub"}
 rUpdate = {"UPDATE": "update"}
 
@@ -69,12 +73,10 @@ def prepare(rType="MAIN"):
     for rPackage in rPackages:
         printc("Installing %s" % rPackage)
         os.system("apt-get install %s -y > /dev/null" % rPackage)
-    printc("Installing libpng")
-    os.system("wget -q -O /tmp/libpng12.deb http://mirrors.kernel.org/ubuntu/pool/main/libp/libpng/libpng12-0_1.2.54-1ubuntu1_amd64.deb")
-    os.system("dpkg -i /tmp/libpng12.deb > /dev/null")
-    os.system("apt-get install -y > /dev/null") 
-    try: os.remove("/tmp/libpng12.deb")
-    except: pass
+    
+    # REMOVED: Failed libpng12 manual install.
+    # We now rely on libpng-dev from apt-get above.
+    
     try:
         subprocess.check_output("getent passwd xtreamcodes > /dev/null".split())
     except:
@@ -90,8 +92,16 @@ def install(rType="MAIN"):
     except:
         printc("Invalid download URL!", col.FAIL)
         return False
-    os.system('wget -q -O "/tmp/xtreamcodes.tar.gz" "%s"' % rURL)
+    # Added --no-check-certificate to handle expired SSL certs on mirrors
+    os.system('wget --no-check-certificate -q -O "/tmp/xtreamcodes.tar.gz" "%s"' % rURL)
+    
+    # Check if file is valid (larger than 1MB) before trying to untar
     if os.path.exists("/tmp/xtreamcodes.tar.gz"):
+        file_size = os.path.getsize("/tmp/xtreamcodes.tar.gz")
+        if file_size < 1000000: # Less than 1MB means it's likely an error page
+             printc("Download failed (File too small). Link is broken.", col.FAIL)
+             return False
+
         printc("Installing Software")
         if os.path.exists("/home/xtreamcodes/iptv_xtream_codes/GeoLite2.mmdb"):
             os.system('chattr -f -i /home/xtreamcodes/iptv_xtream_codes/GeoLite2.mmdb > /dev/null')
@@ -103,7 +113,7 @@ def install(rType="MAIN"):
     return False
 
 def installadminpanel():
-    rURL = "https://github.com/msellpower/xtream/releases/latest/download/release_22f.zip"
+    rURL = "https://github.com/emre1393/xtreamui_mirror/releases/latest/download/release_22f.zip"
     printc("Downloading Admin Panel")  
     os.system('wget -q -O "/tmp/update.zip" "%s"' % rURL)
     if os.path.exists("/tmp/update.zip"):
@@ -167,7 +177,7 @@ def mysql(rUsername, rPassword):
                 os.system('mysql -u root%s -e "USE xtream_iptvpro; UPDATE settings SET get_real_ip_client=\'\', double_auth=\'1\', hash_lb=\'1\', mag_security=\'1\' where id=\'1\';" > /dev/null'  % rExtra)
                 if not os.path.exists("/etc/mysql/mysqld"):
                     if not "EnvironmentFile=-/etc/mysql/mysqld" in open("/lib/systemd/system/mysql.service").read(): 
-                        os.system('echo "LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.1" > /etc/mysql/mysqld')
+                        os.system('echo "LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2" > /etc/mysql/mysqld')
                         os.system('echo "%s" > /lib/systemd/system/mysql.service' % rMySQLServiceFile)
                         os.system('systemctl daemon-reload; systemctl restart mysql.service;')
             try: os.remove("/home/xtreamcodes/iptv_xtream_codes/database.sql")
